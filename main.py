@@ -22,23 +22,24 @@ config = {}
 bridge_health_topic = ""
 
 
-def load_config():
+def load_config(exit_on_error=True):
+    def _fail(msg):
+        if exit_on_error:
+            print(msg, file=sys.stderr)
+            sys.exit(1)
+        raise ValueError(msg)
+
     required = ["BLE_MAC_ADDRESS", "DEVICE_NAME", "DEVICE_MODEL"]
     missing = [name for name in required if not os.environ.get(name)]
     if missing:
-        print(
-            f"Missing required environment variables: {', '.join(missing)}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        _fail(f"Missing required environment variables: {', '.join(missing)}")
 
     def _int_env(name, default):
         raw = os.environ.get(name, default)
         try:
             return int(raw)
         except ValueError:
-            print(f"Invalid integer for {name}: {raw}", file=sys.stderr)
-            sys.exit(1)
+            _fail(f"Invalid integer for {name}: {raw}")
 
     ble_mac_address = os.environ["BLE_MAC_ADDRESS"]
     device_id = "BYD-" + ble_mac_address.replace(":", "").upper()
