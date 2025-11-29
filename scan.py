@@ -1,4 +1,8 @@
 import argparse
+import os
+import re
+from typing import Dict, List, Optional, Tuple
+
 from bluepy.btle import Scanner, DefaultDelegate
 
 
@@ -18,6 +22,24 @@ parser.add_argument(
     "--name",
     type=str,
     help="Filter results to devices whose name or advertisement contains this text",
+)
+parser.add_argument(
+    "--write-env",
+    type=str,
+    default=None,
+    help="Path to write a .env file using .env.sample defaults and the best match",
+)
+parser.add_argument(
+    "--mqtt-host",
+    type=str,
+    default=None,
+    help="Override MQTT_HOST when writing .env",
+)
+parser.add_argument(
+    "--sample",
+    type=str,
+    default=".env.sample",
+    help="Path to the env sample file to copy from when writing .env",
 )
 args = parser.parse_args()
 
@@ -43,8 +65,67 @@ for dev in devices:
     if name:
         print(f"Name = {name}")
 
+def pick_best(devices: List) -> Optional:
+    if not devices:
+        return None
+    return sorted(devices, key=lambda d: d.rssi, reverse=True)[0]
+
+
+def _parse_kv(line: str) -> Optional[Tuple[str, str]]:
+    # Simple KEY=VALUE parser; ignores comments
+    if "=" not in line:
+        return None
+    if line.strip().startswith("#"):
+        return None
+    key, value = line.split("=", 1)
+    return key.strip(), value.strip()
+
+
+def _format_value(val: str) -> str:
+    # Keep numbers unquoted, otherwise quote
+    if re.fullmatch(r"-?\d+(\.\d+)?", val):
+        return val
+    return f'"{val}"'
+
+
+def write_env(
+    sample_path: str,
+    output_path: str,
+    overrides: Dict[str, str],
+) -> None:
+    lines: List[str] = []
+    seen = set()
+    if os.path.exists(sample_path):
+        with open(sample_path, "r", encoding="ascii") as f:
+            for line in f.readlines():
+                parsed = _parse_kv(line)
+                if parsed:
+                    key, _ = parsed
+                    if key in overrides:
+                        lines.append(f"{key}={_format_value(overrides[key])}\n")
+                        seen.add(key)
+                        continue
+                lines.append(line)
+    else:
+        print(f"Sample env file not found at {sample_path}; creating minimal .env")
+
+    # Append any missing override keys
+    for key, val in overrides.items():
+        if key not in seen:
+            lines.append(f"{key}={_format_value(val)}\n")
+    with open(output_path, "w", encoding="ascii") as f:
+        f.writelines(lines)
+    print(f"Wrote {output_path} with BLE_MAC_ADDRESS and overrides applied.")
+
+
 if matches and args.name:
-    selected = matches[0]
-    print("\nSuggested .env snippet for the first match:")
+    selected = pick_best(matches)
+    print("\nSuggested .env snippet for the best match:")
     print(f"BLE_MAC_ADDRESS={selected.addr}")
     print("BLE_PASSKEY=1234  # adjust if your heater uses a different key")
+
+    if args.write_env:
+        overrides = {"BLE_MAC_ADDRESS": selected.addr}
+        if args.mqtt_host:
+            overrides["MQTT_HOST"] = args.mqtt_host
+        write_env(args.sample, args.write_env, overrides)
