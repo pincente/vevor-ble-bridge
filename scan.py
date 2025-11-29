@@ -78,7 +78,10 @@ def _parse_kv(line: str) -> Optional[Tuple[str, str]]:
     if line.strip().startswith("#"):
         return None
     key, value = line.split("=", 1)
-    return key.strip(), value.strip()
+    val = value.strip()
+    if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+        val = val[1:-1]
+    return key.strip(), val
 
 
 def _format_value(val: str) -> str:
@@ -118,14 +121,22 @@ def write_env(
     print(f"Wrote {output_path} with BLE_MAC_ADDRESS and overrides applied.")
 
 
-if matches and args.name:
-    selected = pick_best(matches)
+selected = pick_best(matches)
+
+if selected:
     print("\nSuggested .env snippet for the best match:")
     print(f"BLE_MAC_ADDRESS={selected.addr}")
     print("BLE_PASSKEY=1234  # adjust if your heater uses a different key")
+else:
+    print("\nNo device match found for the given filter.")
 
-    if args.write_env:
-        overrides = {"BLE_MAC_ADDRESS": selected.addr}
-        if args.mqtt_host:
-            overrides["MQTT_HOST"] = args.mqtt_host
+if args.write_env:
+    overrides = {}
+    if selected:
+        overrides["BLE_MAC_ADDRESS"] = selected.addr
+    if args.mqtt_host:
+        overrides["MQTT_HOST"] = args.mqtt_host
+    if overrides:
         write_env(args.sample, args.write_env, overrides)
+    else:
+        print("No overrides available; not writing .env.")
