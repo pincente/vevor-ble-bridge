@@ -1,14 +1,16 @@
 # Vevor BLE Bridge
 # 2024 Bartosz Derleta <bartosz@derleta.com>
 
-import os
-from bluepy.btle import Peripheral, DefaultDelegate, Scanner
-import threading
-import time
-import random
+from bluepy.btle import (
+    Peripheral,
+    DefaultDelegate,
+    Scanner,
+    BTLEDisconnectError,
+    BTLEException,
+)
 import math
-import struct
-import sys
+import random
+import time
 
 
 def _u8tonumber(e):
@@ -130,19 +132,54 @@ class DieselHeater:
     _characteristic_uuid = "0000ffe1-0000-1000-8000-00805f9b34fb"
     _last_notification = None
 
-    def __init__(self, mac_address: str, passkey: int):
+    def __init__(self, mac_address: str, passkey: int, logger=None):
         self.mac_address = mac_address
         self.passkey = passkey
-        self.peripheral = Peripheral(mac_address, "public")
-        self.service = self.peripheral.getServiceByUUID(self._service_uuid)
-        if self.service is None:
-            raise RuntimeError("Requested service is not supported by peripheral")
-        self.characteristic = self.service.getCharacteristics(
-            self._characteristic_uuid
-        )[0]
-        if self.characteristic is None:
-            raise RuntimeError("Requested characteristic is not supported by service")
-        self.peripheral.setDelegate(_DieselHeaterDelegate(self))
+        self.logger = logger
+        self.peripheral = None
+        self.service = None
+        self.characteristic = None
+        self._connect_with_retry()
+
+    def _connect_with_retry(self, attempts=3, base_delay=2):
+        last_error = None
+        for attempt in range(1, attempts + 1):
+            try:
+                if self.logger:
+                    self.logger.info(
+                        "Connecting to heater %s (attempt %d/%d)",
+                        self.mac_address,
+                        attempt,
+                        attempts,
+                    )
+                self.peripheral = Peripheral(self.mac_address, "public")
+                self.service = self.peripheral.getServiceByUUID(self._service_uuid)
+                if self.service is None:
+                    raise RuntimeError(
+                        "Requested service is not supported by peripheral"
+                    )
+                self.characteristic = self.service.getCharacteristics(
+                    self._characteristic_uuid
+                )[0]
+                if self.characteristic is None:
+                    raise RuntimeError(
+                        "Requested characteristic is not supported by service"
+                    )
+                self.peripheral.setDelegate(_DieselHeaterDelegate(self))
+                if self.logger:
+                    self.logger.info("Connected to heater")
+                return
+            except Exception as exc:
+                last_error = exc
+                if self.logger:
+                    self.logger.warning(
+                        "BLE connect failed (attempt %d/%d): %s",
+                        attempt,
+                        attempts,
+                        exc,
+                    )
+                time.sleep(base_delay * attempt)
+        raise last_error
 
     def _send_command(self, command: int, argument: int, n: int):
         o = bytearray([0xAA, n % 256, 0, 0, 0, 0, 0, 0])
@@ -156,13 +193,26 @@ class DieselHeater:
         o[5] = argument % 256
         o[6] = math.floor(argument / 256)
         o[7] = o[2] + o[3] + o[4] + o[5] + o[6]
-        # print("> " + o.hex(' ', 1))
-        self._last_notification = None
-        response = self.characteristic.write(
-            o, withResponse=True
-        )  # returns sth like "{'rsp': ['wr']}"
-        if self.peripheral.waitForNotifications(1) and self._last_notification:
-            return self._last_notification
+        retries = 3
+        for attempt in range(1, retries + 1):
+            try:
+                # print("> " + o.hex(' ', 1))
+                self._last_notification = None
+                self.characteristic.write(o, withResponse=True)
+                if (
+                    self.peripheral.waitForNotifications(1)
+                    and self._last_notification
+                ):
+                    return self._last_notification
+                return None
+            except (BTLEDisconnectError, BTLEException, BrokenPipeError) as exc:
+                if self.logger:
+                    self.logger.warning(
+                        "BLE command failed (attempt %d/%d): %s", attempt, retries, exc
+                    )
+                if attempt == retries:
+                    raise
+                self._connect_with_retry()
         return None
 
     def get_status(self):
