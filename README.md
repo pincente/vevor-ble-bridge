@@ -24,7 +24,7 @@ A MQTT-BLE bridge to enable control of Vevor Diesel Heater, using reverse-engine
 Generate `.env` from the sample using a scan (picks the best RSSI match):
 
 * Host: `python scan.py --name vevor --write-env .env --mqtt-host 192.168.24.92`
-* Docker: `docker run --rm --net=host --privileged vevor-ble-bridge python scan.py --name vevor --write-env .env --mqtt-host 192.168.24.92`
+* Docker: `docker run --rm --net=host --privileged -v "$(pwd)":/app vevor-ble-bridge python scan.py --name vevor --write-env /app/.env --mqtt-host 192.168.24.92`
 
 ### Textual TUI (diagnostics)
 
