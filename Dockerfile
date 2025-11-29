@@ -5,6 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bluez \
+    build-essential \
     libbluetooth-dev \
     libglib2.0-dev \
     && rm -rf /var/lib/apt/lists/*
