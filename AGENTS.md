@@ -1,0 +1,24 @@
+# Notes for the next agent (BLE bridge / HA availability)
+
+- Branch: `ble-improvements` (already pushed). Latest commits: `Retain MQTT availability and add LWT for bridge` (69bab74) and `Keep HA online when status missing and wait longer for BLE reply` (746671a).
+- Key changes:
+  - `main.py`: sets MQTT LWT to `.../bridge/state offline` (retain); publishes `online` with retain on connect and loop start; discovery/config publishes are retained; availability publishes are retained; dispatch keeps bridge online even if a status poll returns `None`.
+  - `vevor.py`: waits up to ~3 seconds for BLE notifications to tolerate slow heaters.
+- Problem to solve: Home Assistant shows the bridge offline and no sensor data. MQTT broker only shows retained `offline` messages. Need to debug live on the Beaglebone (BBG) running the container `vevor-ble-bridge-vevor-ble-bridge-1`.
+- Verify code inside container is current:
+  - `docker exec vevor-ble-bridge-vevor-ble-bridge-1 grep -n "will_set" /app/main.py`
+  - `docker exec vevor-ble-bridge-vevor-ble-bridge-1 grep -n "bridge/state" /app/main.py`
+- Check container state and logs:
+  - `docker ps -a | grep vevor-ble-bridge`
+  - `docker logs -f vevor-ble-bridge-vevor-ble-bridge-1`
+- Enable DEBUG to see poll failures:
+  - `docker exec vevor-ble-bridge-vevor-ble-bridge-1 sh -c 'echo LOG_LEVEL=DEBUG >> /app/.env'`
+  - `docker restart vevor-ble-bridge-vevor-ble-bridge-1`
+  - Tail logs again for “Error while polling heater”.
+- BLE sanity check:
+  - `docker exec vevor-ble-bridge-vevor-ble-bridge-1 python main.py --diag`
+  - If this fails/hangs, BLE on the BBG or the heater is likely the culprit.
+- MQTT verification after restart:
+  - `mosquitto_sub -h 192.168.24.92 -v -t 'home/#' -C 10`
+  - Expect to see `home/BYD-7019889197BF/bridge/state online` if publishes succeed.
+- Container name on test machine: `vevor-ble-bridge-vevor-ble-bridge-1`. Network host mode with privileges is needed for BLE.
