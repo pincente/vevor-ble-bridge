@@ -81,8 +81,8 @@ class BridgeApp(App):
         super().__init__()
         self.config = None
         self._heater: Optional[DieselHeater] = None
-        self._logger = logging.getLogger("vevor-tui")
-        self._logger.addHandler(logging.NullHandler())
+        self._heater_logger = logging.getLogger("vevor-tui")
+        self._heater_logger.addHandler(logging.NullHandler())
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -150,7 +150,7 @@ class BridgeApp(App):
             self._heater = DieselHeater(
                 self.config["ble_mac_address"],
                 self.config["ble_passkey"],
-                logger=self._logger,
+                logger=self._heater_logger,
             )
         return self._heater
 

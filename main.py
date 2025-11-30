@@ -8,6 +8,7 @@ import time
 import os
 import sys
 import argparse
+from pathlib import Path
 import paho.mqtt.client as mqtt
 import vevor
 
@@ -22,12 +23,30 @@ config = {}
 bridge_health_topic = ""
 
 
+def load_env_file(path: str | Path | None = None) -> bool:
+    """Load a simple KEY=VALUE .env file into the environment, without overriding existing variables."""
+    env_path = Path(path) if path else Path(__file__).resolve().parent / ".env"
+    if not env_path.exists():
+        return False
+    for raw_line in env_path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+    return True
+
+
 def load_config(exit_on_error=True):
     def _fail(msg):
         if exit_on_error:
             print(msg, file=sys.stderr)
             sys.exit(1)
         raise ValueError(msg)
+
+    load_env_file()
 
     required = ["BLE_MAC_ADDRESS", "DEVICE_NAME", "DEVICE_MODEL"]
     missing = [name for name in required if not os.environ.get(name)]
