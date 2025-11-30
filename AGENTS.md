@@ -22,3 +22,7 @@
   - `mosquitto_sub -h 192.168.24.92 -v -t 'home/#' -C 10`
   - Expect to see `home/BYD-7019889197BF/bridge/state online` if publishes succeed.
 - Container name on test machine: `vevor-ble-bridge-vevor-ble-bridge-1`. Network host mode with privileges is needed for BLE.
+- To run Codex in Docker on the BBG (avoid installing Node/CLI on device):
+  - Build: `docker build -f Dockerfile.codex -t codex-cli .`
+  - Run (mount repo + codex binary from host): `docker run --rm -it --net=host --privileged -v "$(pwd)":/workspace -v /usr/local/bin/codex:/usr/local/bin/codex:ro -e CODEX_API_KEY=... codex-cli`
+  - The CLI binary is expected on the host at `/usr/local/bin/codex`; adjust the mount if it lives elsewhere. Use `--net=host --privileged` if you need BLE access from inside; otherwise drop them.

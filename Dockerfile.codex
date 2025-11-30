@@ -1,0 +1,16 @@
+# Container image to run the Codex CLI on constrained hosts (e.g., Beaglebone).
+# Assumes the Codex CLI binary will be mounted in at /usr/local/bin/codex.
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl git python3 python3-pip \
+        libglib2.0-dev bluetooth bluez && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# The Codex CLI binary is expected to be mounted in at runtime:
+#   -v /path/to/codex:/usr/local/bin/codex:ro
+ENTRYPOINT ["/usr/local/bin/codex"]
