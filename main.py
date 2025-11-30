@@ -101,6 +101,7 @@ def init_logger(log_level):
 
 def init_client():
     client = mqtt.Client(client_id=config["device_id"], clean_session=True)
+    client.will_set(f"{config['mqtt_prefix']}/bridge/state", "offline", retain=True)
     if config["mqtt_username"] and config["mqtt_password"]:
         logger.info(
             f"Connecting to MQTT broker {config['mqtt_username']}@{config['mqtt_host']}:{config['mqtt_port']}"
@@ -127,7 +128,7 @@ def get_device_conf():
 
 
 def publish_ha_config():
-    client.publish(bridge_health_topic, "online")
+    client.publish(bridge_health_topic, "online", retain=True)
     bridge_status_conf = {
         "device": get_device_conf(),
         "device_class": "connectivity",
@@ -140,6 +141,7 @@ def publish_ha_config():
     client.publish(
         f"{config['mqtt_discovery_prefix']}/binary_sensor/{config['device_id']}-bridge/config",
         json.dumps(bridge_status_conf),
+        retain=True,
     )
 
     start_conf = {
@@ -154,6 +156,7 @@ def publish_ha_config():
     client.publish(
         f"{config['mqtt_discovery_prefix']}/button/{config['device_id']}-000/config",
         json.dumps(start_conf),
+        retain=True,
     )
 
     stop_conf = {
@@ -168,6 +171,7 @@ def publish_ha_config():
     client.publish(
         f"{config['mqtt_discovery_prefix']}/button/{config['device_id']}-001/config",
         json.dumps(stop_conf),
+        retain=True,
     )
 
     status_conf = {
@@ -180,6 +184,7 @@ def publish_ha_config():
     client.publish(
         f"{config['mqtt_discovery_prefix']}/sensor/{config['device_id']}-010/config",
         json.dumps(status_conf),
+        retain=True,
     )
 
     room_temperature_conf = {
@@ -195,6 +200,7 @@ def publish_ha_config():
     client.publish(
         f"{config['mqtt_discovery_prefix']}/sensor/{config['device_id']}-011/config",
         json.dumps(room_temperature_conf),
+        retain=True,
     )
 
     heater_temperature_conf = {
@@ -210,6 +216,7 @@ def publish_ha_config():
     client.publish(
         f"{config['mqtt_discovery_prefix']}/sensor/{config['device_id']}-012/config",
         json.dumps(heater_temperature_conf),
+        retain=True,
     )
 
     voltage_conf = {
@@ -225,6 +232,7 @@ def publish_ha_config():
     client.publish(
         f"{config['mqtt_discovery_prefix']}/sensor/{config['device_id']}-013/config",
         json.dumps(voltage_conf),
+        retain=True,
     )
 
     altitude_conf = {
@@ -240,6 +248,7 @@ def publish_ha_config():
     client.publish(
         f"{config['mqtt_discovery_prefix']}/sensor/{config['device_id']}-014/config",
         json.dumps(altitude_conf),
+        retain=True,
     )
 
     mode_select_conf = {
@@ -255,6 +264,7 @@ def publish_ha_config():
     client.publish(
         f"{config['mqtt_discovery_prefix']}/select/{config['device_id']}-021/config",
         json.dumps(mode_select_conf),
+        retain=True,
     )
 
     level_conf = {
@@ -291,6 +301,7 @@ def publish_ha_config():
     client.publish(
         f"{config['mqtt_discovery_prefix']}/number/{config['device_id']}-022/config",
         json.dumps(temperature_conf),
+        retain=True,
     )   
 
 def on_connect(client, userdata, flags, rc):
@@ -322,44 +333,76 @@ def dispatch_result(result):
         msg = result.running_step_msg
         if result.error:
             msg = f"{msg} ({result.error_msg})"
-        client.publish(f"{config['mqtt_prefix']}/status/state", msg)
-        client.publish(f"{config['mqtt_prefix']}/room_temperature/state", result.cab_temperature)
+        client.publish(f"{config['mqtt_prefix']}/status/state", msg, retain=True)
+        client.publish(
+            f"{config['mqtt_prefix']}/room_temperature/state",
+            result.cab_temperature,
+            retain=True,
+        )
         if result.running_mode:
-            client.publish(f"{config['mqtt_prefix']}/mode/av", "online")
-            client.publish(f"{config['mqtt_prefix']}/mode/state", modes[result.running_mode - 1])
+            client.publish(f"{config['mqtt_prefix']}/mode/av", "online", retain=True)
+            client.publish(
+                f"{config['mqtt_prefix']}/mode/state",
+                modes[result.running_mode - 1],
+                retain=True,
+            )
             mode_pub = True
         if result.running_step:
-            client.publish(f"{config['mqtt_prefix']}/voltage/state", result.supply_voltage)
-            client.publish(f"{config['mqtt_prefix']}/altitude/state", result.altitude)
             client.publish(
-                f"{config['mqtt_prefix']}/heater_temperature/state", result.case_temperature
+                f"{config['mqtt_prefix']}/voltage/state",
+                result.supply_voltage,
+                retain=True,
             )
-            client.publish(f"{config['mqtt_prefix']}/level/state", result.set_level)
+            client.publish(
+                f"{config['mqtt_prefix']}/altitude/state",
+                result.altitude,
+                retain=True,
+            )
+            client.publish(
+                f"{config['mqtt_prefix']}/heater_temperature/state",
+                result.case_temperature,
+                retain=True,
+            )
+            client.publish(
+                f"{config['mqtt_prefix']}/level/state",
+                result.set_level,
+                retain=True,
+            )
             if result.set_temperature is not None:
-                client.publish(f"{config['mqtt_prefix']}/temperature/state", result.set_temperature)
-            if ((result.running_mode == 0) or (result.running_mode == 1)) and (result.running_step < 4):
-                client.publish(f"{config['mqtt_prefix']}/level/av", "online")
+                client.publish(
+                    f"{config['mqtt_prefix']}/temperature/state",
+                    result.set_temperature,
+                    retain=True,
+                )
+            if ((result.running_mode == 0) or (result.running_mode == 1)) and (
+                result.running_step < 4
+            ):
+                client.publish(f"{config['mqtt_prefix']}/level/av", "online", retain=True)
                 level_pub = True
             if result.running_mode == 2:
-                client.publish(f"{config['mqtt_prefix']}/temperature/av", "online")
+                client.publish(
+                    f"{config['mqtt_prefix']}/temperature/av",
+                    "online",
+                    retain=True,
+                )
                 temperature_pub = True
             if (result.running_step > 0) and (result.running_step < 4):
-                client.publish(f"{config['mqtt_prefix']}/stop/av", "online")
+                client.publish(f"{config['mqtt_prefix']}/stop/av", "online", retain=True)
                 stop_pub = True
         else:
-            client.publish(f"{config['mqtt_prefix']}/start/av", "online")
+            client.publish(f"{config['mqtt_prefix']}/start/av", "online", retain=True)
             start_pub = True
     if not stop_pub:
-        client.publish(f"{config['mqtt_prefix']}/stop/av", "offline")
+        client.publish(f"{config['mqtt_prefix']}/stop/av", "offline", retain=True)
     if not start_pub:
-        client.publish(f"{config['mqtt_prefix']}/start/av", "offline")
+        client.publish(f"{config['mqtt_prefix']}/start/av", "offline", retain=True)
     if not level_pub:
-        client.publish(f"{config['mqtt_prefix']}/level/av", "offline")
+        client.publish(f"{config['mqtt_prefix']}/level/av", "offline", retain=True)
     if not temperature_pub:
-        client.publish(f"{config['mqtt_prefix']}/temperature/av", "offline")
+        client.publish(f"{config['mqtt_prefix']}/temperature/av", "offline", retain=True)
     if not mode_pub:
-        client.publish(f"{config['mqtt_prefix']}/mode/av", "offline")
-    client.publish(bridge_health_topic, "online" if result else "offline")
+        client.publish(f"{config['mqtt_prefix']}/mode/av", "offline", retain=True)
+    client.publish(bridge_health_topic, "online" if result else "offline", retain=True)
 
 
 # The callback for when a PUBLISH message is received from the server.
@@ -456,6 +499,7 @@ def main():
         config["ble_mac_address"], config["ble_passkey"], logger=logger
     )
     client.loop_start()
+    client.publish(bridge_health_topic, "online", retain=True)
 
     try:
         while run:
