@@ -319,79 +319,91 @@ def on_connect(client, userdata, flags, rc):
             (f"{config['mqtt_prefix']}/mode/cmd", 2),
         ]
     )
+    # Mark commands available as soon as we connect; states will be updated on the first poll.
+    for topic in [
+        f"{config['mqtt_prefix']}/start/av",
+        f"{config['mqtt_prefix']}/stop/av",
+        f"{config['mqtt_prefix']}/level/av",
+        f"{config['mqtt_prefix']}/temperature/av",
+        f"{config['mqtt_prefix']}/mode/av",
+    ]:
+        client.publish(topic, "online", retain=True)
     publish_ha_config()
 
 
 def dispatch_result(result):
+    if result is None:
+        # Keep the bridge marked online; detailed availabilities stay as last known.
+        client.publish(bridge_health_topic, "online", retain=True)
+        return
     stop_pub = False
     start_pub = False
     level_pub = False
     temperature_pub = False
     mode_pub = False
-    if result:
-        logger.debug(str(result.data()))
-        msg = result.running_step_msg
-        if result.error:
-            msg = f"{msg} ({result.error_msg})"
-        client.publish(f"{config['mqtt_prefix']}/status/state", msg, retain=True)
+    logger.debug(str(result.data()))
+    msg = result.running_step_msg
+    if result.error:
+        msg = f"{msg} ({result.error_msg})"
+    client.publish(f"{config['mqtt_prefix']}/status/state", msg, retain=True)
+    client.publish(
+        f"{config['mqtt_prefix']}/room_temperature/state",
+        result.cab_temperature,
+        retain=True,
+    )
+    if result.running_mode:
+        client.publish(f"{config['mqtt_prefix']}/mode/av", "online", retain=True)
         client.publish(
-            f"{config['mqtt_prefix']}/room_temperature/state",
-            result.cab_temperature,
+            f"{config['mqtt_prefix']}/mode/state",
+            modes[result.running_mode - 1],
             retain=True,
         )
-        if result.running_mode:
-            client.publish(f"{config['mqtt_prefix']}/mode/av", "online", retain=True)
+        mode_pub = True
+    if result.running_step:
+        client.publish(
+            f"{config['mqtt_prefix']}/voltage/state",
+            result.supply_voltage,
+            retain=True,
+        )
+        client.publish(
+            f"{config['mqtt_prefix']}/altitude/state",
+            result.altitude,
+            retain=True,
+        )
+        client.publish(
+            f"{config['mqtt_prefix']}/heater_temperature/state",
+            result.case_temperature,
+            retain=True,
+        )
+        client.publish(
+            f"{config['mqtt_prefix']}/level/state",
+            result.set_level,
+            retain=True,
+        )
+        if result.set_temperature is not None:
             client.publish(
-                f"{config['mqtt_prefix']}/mode/state",
-                modes[result.running_mode - 1],
+                f"{config['mqtt_prefix']}/temperature/state",
+                result.set_temperature,
                 retain=True,
             )
-            mode_pub = True
-        if result.running_step:
+        if ((result.running_mode == 0) or (result.running_mode == 1)) and (
+            result.running_step < 4
+        ):
+            client.publish(f"{config['mqtt_prefix']}/level/av", "online", retain=True)
+            level_pub = True
+        if result.running_mode == 2:
             client.publish(
-                f"{config['mqtt_prefix']}/voltage/state",
-                result.supply_voltage,
+                f"{config['mqtt_prefix']}/temperature/av",
+                "online",
                 retain=True,
             )
-            client.publish(
-                f"{config['mqtt_prefix']}/altitude/state",
-                result.altitude,
-                retain=True,
-            )
-            client.publish(
-                f"{config['mqtt_prefix']}/heater_temperature/state",
-                result.case_temperature,
-                retain=True,
-            )
-            client.publish(
-                f"{config['mqtt_prefix']}/level/state",
-                result.set_level,
-                retain=True,
-            )
-            if result.set_temperature is not None:
-                client.publish(
-                    f"{config['mqtt_prefix']}/temperature/state",
-                    result.set_temperature,
-                    retain=True,
-                )
-            if ((result.running_mode == 0) or (result.running_mode == 1)) and (
-                result.running_step < 4
-            ):
-                client.publish(f"{config['mqtt_prefix']}/level/av", "online", retain=True)
-                level_pub = True
-            if result.running_mode == 2:
-                client.publish(
-                    f"{config['mqtt_prefix']}/temperature/av",
-                    "online",
-                    retain=True,
-                )
-                temperature_pub = True
-            if (result.running_step > 0) and (result.running_step < 4):
-                client.publish(f"{config['mqtt_prefix']}/stop/av", "online", retain=True)
-                stop_pub = True
-        else:
-            client.publish(f"{config['mqtt_prefix']}/start/av", "online", retain=True)
-            start_pub = True
+            temperature_pub = True
+        if (result.running_step > 0) and (result.running_step < 4):
+            client.publish(f"{config['mqtt_prefix']}/stop/av", "online", retain=True)
+            stop_pub = True
+    else:
+        client.publish(f"{config['mqtt_prefix']}/start/av", "online", retain=True)
+        start_pub = True
     if not stop_pub:
         client.publish(f"{config['mqtt_prefix']}/stop/av", "offline", retain=True)
     if not start_pub:

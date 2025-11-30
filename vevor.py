@@ -199,11 +199,11 @@ class DieselHeater:
                 # print("> " + o.hex(' ', 1))
                 self._last_notification = None
                 self.characteristic.write(o, withResponse=True)
-                if (
-                    self.peripheral.waitForNotifications(1)
-                    and self._last_notification
-                ):
-                    return self._last_notification
+                # Give the heater a bit more time to respond; some devices are slow.
+                start = time.time()
+                while time.time() - start < 3:
+                    if self.peripheral.waitForNotifications(1) and self._last_notification:
+                        return self._last_notification
                 return None
             except (BTLEDisconnectError, BTLEException, BrokenPipeError) as exc:
                 if self.logger:
